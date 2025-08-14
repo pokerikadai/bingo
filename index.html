@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="ja" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>ポケモンユナイト ビンゴジェネレーター</title>
+    <meta name="robots" content="noindex">
+</head>
+<body>
+    <div id="bingo-card">
+        <input id="handlename" autocomplete="off" placeholder="名前を入力"></input>
+        <div id="bingo-container" class="bingo-container"></div>
+    </div>
+    <div class="buttons">
+        <button id="shuffle-btn">ビンゴを生成</button>
+        <button id="toggle-candidate-btn">禁止ポケモン選択▼</button>
+    </div>
+    <div id="candidate-container" class="candidate-container"></div>
+    <script>
+        const imageGroups = {
+            "アタック":[
+                'images/アローラキュウコン.png','images/アローラライチュウ.png','images/インテレオン.png','images/ウッウ.png','images/エースバーン.png','images/エーフィ.png','images/グレイシア.png','images/グレンアルマ.png','images/ゲッコウガ.png','images/サーナイト.png','images/シャンデラ.png','images/ジュナイパー.png','images/ジュラルドン.png','images/ドラパルト.png','images/ニンフィア.png','images/ピカチュウ.png','images/フシギバナ.png','images/マフォクシー.png','images/ミュウ.png','images/ミュウツーY.png','images/ミライドン.png','images/ラティオス.png'
+            ],
+            "ディフェンス":[
+                'images/イワパレス.png','images/オーロット.png','images/カビゴン.png','images/カメックス.png','images/ヌメルゴン.png','images/ブラッキー.png','images/ホウオウ.png','images/マンムー.png','images/ヤドラン.png','images/ヨクバリス.png','images/ラプラス.png'
+            ],
+            "スピード":[
+                'images/アブソル.png','images/ガラルギャロップ.png','images/ゲンガー.png','images/ゼラオラ.png','images/ゾロアーク.png','images/ダークライ.png','images/ドードリオ.png','images/ファイアロー.png','images/マスカーニャ.png','images/リーフィア.png'
+            ],
+            "バランス":[
+                'images/アマージョ.png','images/ウーラオス.png','images/カイリキー.png','images/カイリュー.png','images/ガブリアス.png','images/ギャラドス.png','images/ギルガルド.png','images/ザシアン.png','images/スイクン.png','images/ソウブレイズ.png','images/タイレーツ.png','images/デカヌチャン.png','images/バシャーモ.png','images/ハッサム.png','images/バンギラス.png','images/マッシブーン.png','images/マリルリ.png','images/ミミッキュ.png','images/ミュウツーX.png','images/メタグロス.png','images/リザードン.png','images/ルカリオ.png'
+            ],
+            "サポート":[
+                'images/キュワワー.png','images/コダック.png','images/ハピナス.png','images/バリヤード.png','images/ピクシー.png','images/フーパ.png','images/プクリン.png','images/マホイップ.png','images/ヤミラミ.png','images/ラティアス.png','images/ワタシラガ.png'
+            ]
+        };
+
+        const bingoContainer = document.getElementById('bingo-container');
+        const candidateContainer = document.getElementById('candidate-container');
+        const freeSpaceUrl = 'images/free_space.png';
+        const handleNameInput = document.getElementById('handlename');
+
+        const LS_KEYS = {
+            BINGO_IMAGES: 'bingoImages',
+            CLICKED_STATE: 'bingoClickedState',
+            EXCLUDED_IMAGES: 'bingoExcludedImages',
+            HANDLE_NAME: 'bingoHandleName'
+        };
+
+        let bingoImages = [];
+        let clickedState = [];
+        let excludedImages = [];
+
+        function loadState() {
+            handleNameInput.value = localStorage.getItem(LS_KEYS.HANDLE_NAME) || '';
+
+            const savedExcluded = localStorage.getItem(LS_KEYS.EXCLUDED_IMAGES);
+            excludedImages = savedExcluded ? JSON.parse(savedExcluded) : [];
+
+            const savedImages = localStorage.getItem(LS_KEYS.BINGO_IMAGES);
+            bingoImages = savedImages ? JSON.parse(savedImages) : [];
+
+            const savedClickedState = localStorage.getItem(LS_KEYS.CLICKED_STATE);
+            clickedState = savedClickedState ? JSON.parse(savedClickedState) : new Array(25).fill(false);
+        }
+
+        function createBingoCard() {
+            if (bingoImages.length === 0) {
+                const allImages = Object.values(imageGroups).flat();
+                const availableImages = allImages.filter((url) => !excludedImages.includes(url));
+                const shuffled = shuffle(availableImages).slice(0, 24);
+                
+                bingoImages = shuffled;
+                bingoImages.splice(12, 0, freeSpaceUrl);
+
+                clickedState = new Array(25).fill(false);
+
+                localStorage.setItem(LS_KEYS.BINGO_IMAGES, JSON.stringify(bingoImages));
+                localStorage.setItem(LS_KEYS.CLICKED_STATE, JSON.stringify(clickedState));
+            }
+
+            bingoContainer.innerHTML = '';
+            bingoImages.forEach((image, index) => {
+                const bingoItem = document.createElement('div');
+                bingoItem.classList.add('bingo-item');
+
+                const img = document.createElement('img');
+                img.src = image;
+                bingoItem.appendChild(img);
+
+                if (image === freeSpaceUrl) {
+                    bingoItem.classList.add('free-space');
+                }
+                
+                if (clickedState[index]) {
+                    bingoItem.classList.add('clicked');
+                }
+
+                bingoItem.addEventListener('click', () => {
+                    bingoItem.classList.toggle('clicked');
+                    clickedState[index] = bingoItem.classList.contains('clicked');
+                    localStorage.setItem(LS_KEYS.CLICKED_STATE, JSON.stringify(clickedState));
+                });
+                bingoContainer.appendChild(bingoItem);
+            });
+        }
+
+        function createCandidateList() {
+            candidateContainer.innerHTML = '';
+            Object.entries(imageGroups).forEach(([groupName, groupImages]) => {
+                const groupContainer = document.createElement('div');
+                groupContainer.classList.add('group-container', groupName);
+
+                const groupTitle = document.createElement('h3');
+                groupTitle.textContent = groupName;
+                groupContainer.appendChild(groupTitle);
+
+                const candidateItemContainer = document.createElement('div');
+                candidateItemContainer.classList.add('candidate-item-container');
+
+                groupImages.forEach((url) => {
+                    const candidateItem = document.createElement('div');
+                    candidateItem.classList.add('candidate-item');
+                    if (excludedImages.includes(url)) {
+                        candidateItem.classList.add('excluded');
+                    }
+
+                    const img = document.createElement('img');
+                    img.src = url;
+
+                    candidateItem.appendChild(img);
+                    candidateItemContainer.appendChild(candidateItem);
+
+                    candidateItem.addEventListener('click', () => {
+                        if (excludedImages.includes(url)) {
+                            excludedImages = excludedImages.filter((excludedUrl) => excludedUrl !== url);
+                            candidateItem.classList.remove('excluded');
+                        } else {
+                            excludedImages.push(url);
+                            candidateItem.classList.add('excluded');
+                        }
+                        localStorage.setItem(LS_KEYS.EXCLUDED_IMAGES, JSON.stringify(excludedImages));
+                    });
+                });
+
+                groupContainer.appendChild(candidateItemContainer);
+                candidateContainer.appendChild(groupContainer);
+            });
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            loadState();
+            createBingoCard();
+            createCandidateList();
+
+            handleNameInput.addEventListener('input', (e) => {
+                localStorage.setItem(LS_KEYS.HANDLE_NAME, e.target.value);
+            });
+
+            document.getElementById('shuffle-btn').addEventListener('click', () => {
+                if (bingoContainer.innerHTML.trim() !== '') {
+                    if (!confirm('現在のビンゴを破棄して再生成しますか？')) {
+                        return;
+                    }
+                }
+                localStorage.removeItem(LS_KEYS.BINGO_IMAGES);
+                localStorage.removeItem(LS_KEYS.CLICKED_STATE);
+                bingoImages = [];
+                createBingoCard();
+            });
+
+            const toggleCandidateBtn = document.getElementById('toggle-candidate-btn');
+            toggleCandidateBtn.addEventListener('click', () => {
+                candidateContainer.classList.toggle('hidden');
+                candidateContainer.classList.toggle('visible');
+            });
+        });
+    </script>
+
+    <style>
+        html {
+            touch-action: manipulation;
+        }
+
+        .bingo-card {
+            display: flex;
+            justify-content: center;
+            text-align: center;
+            flex-direction: column;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #ffffff;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 600px;
+            box-sizing: border-box;
+        }
+
+        .bingo-container {
+            display: grid;
+            grid-template-columns: repeat(5, 80px);
+            gap: 10px;
+            justify-content: center;
+            align-items: center;
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background-color: #f4f4f9;
+            color: #333;
+            overflow-x: hidden;
+        }
+
+        .bingo-item {
+            width: 80px;
+            height: 80px;
+            border-radius: 2px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f9f9f9;
+            border: 2px solid #ddd;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: all 0.1s ease;
+            cursor: pointer;
+        }
+
+            .bingo-item img {
+                width: 80%;
+                height: 80%;
+                transition: transform 0.1s ease, opacity 0.1s ease;
+            }
+
+            .bingo-item.clicked {
+                background-color: #87cefa;
+                border-color: #0056b3;
+                transform: scale(1.05);
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+            }
+
+                .bingo-item.clicked img {
+                    transform: scale(0.9);
+                    opacity: 0.7;
+                }
+
+        .candidate-container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-top: 20px;
+        }
+
+        .group-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+            .group-container h3 {
+                font-size: 1.2rem;
+                padding: 8px 12px;
+                background-color: #f8f8f8;
+                color: #333;
+                border-radius: 5px;
+                text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+
+            .group-container.アタック h3 {
+                background-color: #ffcccc;
+            }
+
+            .group-container.サポート h3 {
+                background-color: #ffe5cc;
+            }
+
+            .group-container.スピード h3 {
+                background-color: #cce5ff;
+            }
+
+            .group-container.ディフェンス h3 {
+                background-color: #e5ffcc;
+            }
+
+            .group-container.バランス h3 {
+                background-color: #e5ccff;
+            }
+
+        .candidate-item-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .candidate-item {
+            width: 75px;
+            height: 75px;
+            border: 2px solid white;
+            border-radius: 1px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #fff;
+            cursor: pointer;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+            .candidate-item img {
+                width: 90%;
+                height: 90%;
+            }
+
+            .candidate-item.excluded {
+                opacity: 0.5;
+                border: 2px dashed #f00;
+            }
+
+        #shuffle-btn {
+            font-size: 1.2rem;
+            padding: 12px 24px;
+            margin-top: 20px;
+            background-color: #fff;
+            color: #000;
+            border: 2px solid #dcdcdc;
+            border-radius: 12px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+            transition: all 0.1s ease;
+        }
+
+            #shuffle-btn:active {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            }
+
+        #toggle-candidate-btn {
+            font-size: 1.5rem;
+            border: none;
+            color: #666;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+
+        #candidate-container {
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: max-height 0.5s ease, opacity 0.5s ease, transform 0.5s ease;
+        }
+
+            #candidate-container.visible {
+                max-height: 3000px;
+                opacity: 1;
+                transform: translateY(0);
+            }
+
+        .buttons {
+            display: flex;
+            justify-content: center;
+            flex-direction: column;
+        }
+
+        button {
+            display: block;
+            margin: 0 auto;
+        }
+
+        #handlename {
+            background-color: #f4f4f9;
+            border: none;
+            width: 252px;
+            height: 80px;
+            text-align: center;
+            font-size: 200%;
+            font-weight: 900;
+            margin-top: 10px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+            #handlename:hover,#handlename:focus {
+                outline: none;
+            }
+
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        @media screen and (orientation: landscape) and (min-width: 1100px) {
+            .bingo-container {
+                grid-template-columns: repeat(5, 80px);
+            }
+
+            .bingo-item {
+                width: 80px;
+                height: 80px;
+            }
+
+            .candidate-item {
+                width: 40px;
+                height: 40px;
+            }
+
+            * img:hover {
+                transform: translateY(-8px);
+            }
+        }
+    </style>
+</body>
+</html>
