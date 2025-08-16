@@ -50,16 +50,14 @@
 
         const LS_KEYS = {
             EXCLUDED_IMAGES: 'bingoExcludedImages',
-            SAVED_BINGOS: 'bingoSavedCards' // 保存するキーを変更
+            SAVED_BINGOS: 'bingoSavedCards'
         };
 
-        // 現在のビンゴの状態を管理する変数
         let currentBingoImages = [];
         let currentClickedState = [];
-        let currentBingoId = null; // 現在編集中の保存済みビンゴのID
+        let currentBingoId = null;
         let excludedImages = [];
 
-        // ユーティリティ: 配列をシャッフルする
         function shuffle(array) {
             for (let i = array.length - 1; i > 0; i--) {
                 const j = Math.floor(Math.random() * (i + 1));
@@ -68,7 +66,6 @@
             return array;
         }
 
-        // ビンゴ盤面をレンダリングする関数
         function renderBingoGrid() {
             bingoContainer.innerHTML = '';
             currentBingoImages.forEach((image, index) => {
@@ -95,7 +92,6 @@
             });
         }
 
-        // 新しいビンゴを生成する関数
         function generateNewBingo() {
             const allImages = Object.values(imageGroups).flat();
             const availableImages = allImages.filter((url) => !excludedImages.includes(url));
@@ -104,13 +100,12 @@
             currentBingoImages = shuffled;
             currentBingoImages.splice(12, 0, freeSpaceUrl);
             currentClickedState = new Array(25).fill(false);
-            currentBingoId = null; // 新規なのでIDはなし
-            handleNameInput.value = ''; // 名前もリセット
+            currentBingoId = null;
+            handleNameInput.value = '';
 
             renderBingoGrid();
         }
         
-        // 保存されたビンゴのリストをレンダリングする
         function renderSavedList() {
             const savedBingos = JSON.parse(localStorage.getItem(LS_KEYS.SAVED_BINGOS)) || [];
             savedList.innerHTML = '';
@@ -120,28 +115,34 @@
                 
                 const nameSpan = document.createElement('span');
                 nameSpan.textContent = bingo.name;
+                nameSpan.addEventListener('click', () => loadBingo(bingo.id));
                 li.appendChild(nameSpan);
-
-                const buttonContainer = document.createElement('div');
-
-                const loadBtn = document.createElement('button');
-                loadBtn.textContent = '読込';
-                loadBtn.addEventListener('click', () => loadBingo(bingo.id));
-                buttonContainer.appendChild(loadBtn);
 
                 const deleteBtn = document.createElement('button');
                 deleteBtn.textContent = '削除';
                 deleteBtn.classList.add('delete-btn');
                 deleteBtn.addEventListener('click', () => deleteBingo(bingo.id));
-                buttonContainer.appendChild(deleteBtn);
+                li.appendChild(deleteBtn);
                 
-                li.appendChild(buttonContainer);
                 savedList.appendChild(li);
             });
         }
 
-        // 特定のIDのビンゴを読み込む
+        function autoSaveCurrentBingoState() {
+            if (!currentBingoId) return;
+
+            let savedBingos = JSON.parse(localStorage.getItem(LS_KEYS.SAVED_BINGOS)) || [];
+            const bingoToUpdate = savedBingos.find(b => b.id === currentBingoId);
+
+            if (bingoToUpdate) {
+                bingoToUpdate.clickedState = currentClickedState;
+                localStorage.setItem(LS_KEYS.SAVED_BINGOS, JSON.stringify(savedBingos));
+            }
+        }
+
         function loadBingo(id) {
+            autoSaveCurrentBingoState();
+
             const savedBingos = JSON.parse(localStorage.getItem(LS_KEYS.SAVED_BINGOS)) || [];
             const bingoToLoad = savedBingos.find(b => b.id === id);
 
@@ -154,7 +155,6 @@
             }
         }
         
-        // 特定のIDのビンゴを削除する
         function deleteBingo(id) {
             if (!confirm('このビンゴを削除しますか？')) return;
 
@@ -162,7 +162,6 @@
             savedBingos = savedBingos.filter(b => b.id !== id);
             localStorage.setItem(LS_KEYS.SAVED_BINGOS, JSON.stringify(savedBingos));
             
-            // 削除したのが現在表示中のビンゴだったら、盤面をリセット
             if (currentBingoId === id) {
                 generateNewBingo();
             }
@@ -170,7 +169,6 @@
             renderSavedList();
         }
 
-        // 禁止ポケモンのリストを作成する
         function createCandidateList() {
             candidateContainer.innerHTML = '';
             Object.entries(imageGroups).forEach(([groupName, groupImages]) => {
@@ -214,17 +212,14 @@
             });
         }
         
-        // ページ読み込み時の初期化処理
         document.addEventListener("DOMContentLoaded", () => {
-            // 禁止ポケモン情報を読み込む
             const savedExcluded = localStorage.getItem(LS_KEYS.EXCLUDED_IMAGES);
             excludedImages = savedExcluded ? JSON.parse(savedExcluded) : [];
 
-            generateNewBingo(); // まず新しいビンゴを生成して表示
+            generateNewBingo();
             createCandidateList();
-            renderSavedList(); // 保存済みリストを表示
+            renderSavedList();
 
-            // 「新規ビンゴを生成」ボタンのイベント
             document.getElementById('shuffle-btn').addEventListener('click', () => {
                 if (!confirm('現在のビンゴを破棄して新しいビンゴを生成しますか？\n（保存していない場合、内容は失われます）')) {
                     return;
@@ -232,7 +227,6 @@
                 generateNewBingo();
             });
 
-            // 「このビンゴを保存」ボタンのイベント
             document.getElementById('save-btn').addEventListener('click', () => {
                 const name = handleNameInput.value.trim();
                 if (!name) {
@@ -242,9 +236,7 @@
 
                 let savedBingos = JSON.parse(localStorage.getItem(LS_KEYS.SAVED_BINGOS)) || [];
                 
-                // 同じ名前のデータを探す
                 const existingBingoByName = savedBingos.find(b => b.name === name);
-                // もし現在読み込んでいるビンゴなら、IDで上書き
                 if (currentBingoId) {
                     const existingIndex = savedBingos.findIndex(b => b.id === currentBingoId);
                     if (existingIndex !== -1) {
@@ -260,20 +252,17 @@
                         };
                     }
                 } else if (existingBingoByName) {
-                     // 新規作成だが、同じ名前のものが存在する場合
                     if (!confirm(`"${name}" という名前は既に存在します。上書きしますか？`)) return;
-                    // 古いものを削除
                     savedBingos = savedBingos.filter(b => b.name !== name);
                     const newBingo = {
-                        id: Date.now(), // 新しいIDを採番
+                        id: Date.now(),
                         name: name,
                         images: currentBingoImages,
                         clickedState: currentClickedState
                     };
                     savedBingos.push(newBingo);
-                    currentBingoId = newBingo.id; // 保存したのでIDをセット
+                    currentBingoId = newBingo.id;
                 } else {
-                     // 完全な新規保存
                     const newBingo = {
                         id: Date.now(),
                         name: name,
@@ -298,14 +287,13 @@
     </script>
 
 <style>
-    /* 基本設定 */
     html {
         touch-action: manipulation;
     }
 
     body {
         margin: 0;
-        padding: 20px 10px; /* 上下の余白を調整 */
+        padding: 20px 10px;
         background-color: #f4f4f9;
         color: #333;
         font-family: sans-serif;
@@ -314,18 +302,17 @@
 
     * {
         -webkit-tap-highlight-color: transparent;
-        box-sizing: border-box; /* すべての要素でborderを含んだサイズ計算に統一 */
+        box-sizing: border-box;
     }
 
-    /* ビンゴカードエリア */
     #bingo-card {
         display: flex;
         flex-direction: column;
-        align-items: center; /* 子要素を水平方向に中央揃え */
+        align-items: center;
         margin: 20px auto;
         padding: 20px;
-        width: 90%; /* 削除: width:100% */
-        max-width: 600px; /* 追加: 最大幅を指定 */
+        width: 90%;
+        max-width: 600px;
     }
 
     #handlename {
@@ -339,7 +326,7 @@
         font-size: 1.5rem;
         font-weight: 900;
         display: block;
-        margin: 10px auto 20px auto; /* 削除: margin-top:10px, display:block, margin-left/right:autoを統合 */
+        margin: 10px auto 20px auto;
     }
 
     #handlename:focus {
@@ -350,10 +337,9 @@
     .bingo-container {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
-        gap: 5px; /* 追加: マス間の余白 */
-        width: 100%; /* 変更: width:60% */
-        max-width: 450px; /* 追加: ビンゴ盤の最大サイズを固定 */
-        /* 削除: justify-content, align-items, margin-topなど。親要素で制御 */
+        gap: 5px;
+        width: 100%;
+        max-width: 450px;
     }
 
     .bingo-item {
@@ -362,7 +348,7 @@
         position: relative;
         border-radius: 2px;
         background-color: #f9f9f9;
-        border: 2px solid #ddd; /* 追加: 枠線を明確化 */
+        border: 2px solid #ddd;
         transition: all 0.1s ease;
         cursor: pointer;
     }
@@ -386,11 +372,10 @@
         opacity: 0.7;
     }
 
-    /* ボタンエリア */
     .buttons {
         display: flex;
         flex-direction: column;
-        align-items: center; /* ボタン自体を中央に */
+        align-items: center;
         gap: 10px;
         margin-top: 20px;
     }
@@ -428,8 +413,6 @@
         box-shadow: none;
     }
 
-
-    /* 保存済みリストエリア */
     #saved-list-container {
         width: 90%;
         max-width: 600px;
@@ -457,7 +440,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 2px 10px;
+        padding: 8px 10px;
         border-bottom: 1px solid #eee;
     }
 
@@ -468,28 +451,28 @@
     #saved-list li span {
         font-weight: bold;
         flex-grow: 1;
-        text-align: center;
-        margin-left:6.25%;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        transition: background-color 0.2s ease;
+    }
+    
+    #saved-list li span:hover {
+        background-color: #f0f0f0;
     }
 
-    #saved-list li div button {
-        margin-left: 8px;
+    #saved-list li button.delete-btn {
+        margin-left: 12px;
         padding: 5px 10px;
         font-size: 0.9rem;
         cursor: pointer;
-        border: 1px solid #ccc;
+        border: 1px solid #ffaaaa;
         border-radius: 5px;
-        background-color: #f9f9f9;
-    }
-
-    #saved-list li div button.delete-btn {
         background-color: #ffdddd;
-        border-color: #ffaaaa;
         color: #d8000c;
+        flex-shrink: 0;
     }
 
-
-    /* 禁止ポケモン選択エリア */
     .candidate-container {
         max-height: 0;
         overflow: hidden;
@@ -527,7 +510,7 @@
     .candidate-item-container {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px; /* 追加: ポケモン間の余白 */
+        gap: 6px;
     }
 
     .candidate-item {
