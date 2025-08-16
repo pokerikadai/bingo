@@ -11,9 +11,16 @@
         <div id="bingo-container" class="bingo-container"></div>
     </div>
     <div class="buttons">
-        <button id="shuffle-btn">ビンゴを生成</button>
+        <button id="shuffle-btn">新規ビンゴを生成</button>
+        <button id="save-btn">このビンゴを保存</button>
         <button id="toggle-candidate-btn">禁止ポケモン選択▼</button>
     </div>
+
+    <div id="saved-list-container">
+        <h2>保存したビンゴ一覧</h2>
+        <ul id="saved-list"></ul>
+    </div>
+
     <div id="candidate-container" class="candidate-container"></div>
     <script>
         const imageGroups = {
@@ -36,50 +43,35 @@
 
         const bingoContainer = document.getElementById('bingo-container');
         const candidateContainer = document.getElementById('candidate-container');
-        const freeSpaceUrl = 'images/free_space.png';
         const handleNameInput = document.getElementById('handlename');
+        const savedList = document.getElementById('saved-list');
+
+        const freeSpaceUrl = 'images/free_space.png';
 
         const LS_KEYS = {
-            BINGO_IMAGES: 'bingoImages',
-            CLICKED_STATE: 'bingoClickedState',
             EXCLUDED_IMAGES: 'bingoExcludedImages',
-            HANDLE_NAME: 'bingoHandleName'
+            SAVED_BINGOS: 'bingoSavedCards' // 保存するキーを変更
         };
 
-        let bingoImages = [];
-        let clickedState = [];
+        // 現在のビンゴの状態を管理する変数
+        let currentBingoImages = [];
+        let currentClickedState = [];
+        let currentBingoId = null; // 現在編集中の保存済みビンゴのID
         let excludedImages = [];
 
-        function loadState() {
-            handleNameInput.value = localStorage.getItem(LS_KEYS.HANDLE_NAME) || '';
-
-            const savedExcluded = localStorage.getItem(LS_KEYS.EXCLUDED_IMAGES);
-            excludedImages = savedExcluded ? JSON.parse(savedExcluded) : [];
-
-            const savedImages = localStorage.getItem(LS_KEYS.BINGO_IMAGES);
-            bingoImages = savedImages ? JSON.parse(savedImages) : [];
-
-            const savedClickedState = localStorage.getItem(LS_KEYS.CLICKED_STATE);
-            clickedState = savedClickedState ? JSON.parse(savedClickedState) : new Array(25).fill(false);
+        // ユーティリティ: 配列をシャッフルする
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
         }
 
-        function createBingoCard() {
-            if (bingoImages.length === 0) {
-                const allImages = Object.values(imageGroups).flat();
-                const availableImages = allImages.filter((url) => !excludedImages.includes(url));
-                const shuffled = shuffle(availableImages).slice(0, 24);
-                
-                bingoImages = shuffled;
-                bingoImages.splice(12, 0, freeSpaceUrl);
-
-                clickedState = new Array(25).fill(false);
-
-                localStorage.setItem(LS_KEYS.BINGO_IMAGES, JSON.stringify(bingoImages));
-                localStorage.setItem(LS_KEYS.CLICKED_STATE, JSON.stringify(clickedState));
-            }
-
+        // ビンゴ盤面をレンダリングする関数
+        function renderBingoGrid() {
             bingoContainer.innerHTML = '';
-            bingoImages.forEach((image, index) => {
+            currentBingoImages.forEach((image, index) => {
                 const bingoItem = document.createElement('div');
                 bingoItem.classList.add('bingo-item');
 
@@ -91,19 +83,94 @@
                     bingoItem.classList.add('free-space');
                 }
                 
-                if (clickedState[index]) {
+                if (currentClickedState[index]) {
                     bingoItem.classList.add('clicked');
                 }
 
                 bingoItem.addEventListener('click', () => {
                     bingoItem.classList.toggle('clicked');
-                    clickedState[index] = bingoItem.classList.contains('clicked');
-                    localStorage.setItem(LS_KEYS.CLICKED_STATE, JSON.stringify(clickedState));
+                    currentClickedState[index] = bingoItem.classList.contains('clicked');
                 });
                 bingoContainer.appendChild(bingoItem);
             });
         }
 
+        // 新しいビンゴを生成する関数
+        function generateNewBingo() {
+            const allImages = Object.values(imageGroups).flat();
+            const availableImages = allImages.filter((url) => !excludedImages.includes(url));
+            const shuffled = shuffle(availableImages).slice(0, 24);
+            
+            currentBingoImages = shuffled;
+            currentBingoImages.splice(12, 0, freeSpaceUrl);
+            currentClickedState = new Array(25).fill(false);
+            currentBingoId = null; // 新規なのでIDはなし
+            handleNameInput.value = ''; // 名前もリセット
+
+            renderBingoGrid();
+        }
+        
+        // 保存されたビンゴのリストをレンダリングする
+        function renderSavedList() {
+            const savedBingos = JSON.parse(localStorage.getItem(LS_KEYS.SAVED_BINGOS)) || [];
+            savedList.innerHTML = '';
+
+            savedBingos.forEach(bingo => {
+                const li = document.createElement('li');
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = bingo.name;
+                li.appendChild(nameSpan);
+
+                const buttonContainer = document.createElement('div');
+
+                const loadBtn = document.createElement('button');
+                loadBtn.textContent = '読込';
+                loadBtn.addEventListener('click', () => loadBingo(bingo.id));
+                buttonContainer.appendChild(loadBtn);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '削除';
+                deleteBtn.classList.add('delete-btn');
+                deleteBtn.addEventListener('click', () => deleteBingo(bingo.id));
+                buttonContainer.appendChild(deleteBtn);
+                
+                li.appendChild(buttonContainer);
+                savedList.appendChild(li);
+            });
+        }
+
+        // 特定のIDのビンゴを読み込む
+        function loadBingo(id) {
+            const savedBingos = JSON.parse(localStorage.getItem(LS_KEYS.SAVED_BINGOS)) || [];
+            const bingoToLoad = savedBingos.find(b => b.id === id);
+
+            if (bingoToLoad) {
+                currentBingoImages = bingoToLoad.images;
+                currentClickedState = bingoToLoad.clickedState;
+                currentBingoId = bingoToLoad.id;
+                handleNameInput.value = bingoToLoad.name;
+                renderBingoGrid();
+            }
+        }
+        
+        // 特定のIDのビンゴを削除する
+        function deleteBingo(id) {
+            if (!confirm('このビンゴを削除しますか？')) return;
+
+            let savedBingos = JSON.parse(localStorage.getItem(LS_KEYS.SAVED_BINGOS)) || [];
+            savedBingos = savedBingos.filter(b => b.id !== id);
+            localStorage.setItem(LS_KEYS.SAVED_BINGOS, JSON.stringify(savedBingos));
+            
+            // 削除したのが現在表示中のビンゴだったら、盤面をリセット
+            if (currentBingoId === id) {
+                generateNewBingo();
+            }
+
+            renderSavedList();
+        }
+
+        // 禁止ポケモンのリストを作成する
         function createCandidateList() {
             candidateContainer.innerHTML = '';
             Object.entries(imageGroups).forEach(([groupName, groupImages]) => {
@@ -146,34 +213,80 @@
                 candidateContainer.appendChild(groupContainer);
             });
         }
-
-        function shuffle(array) {
-            for (let i = array.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [array[i], array[j]] = [array[j], array[i]];
-            }
-            return array;
-        }
-
+        
+        // ページ読み込み時の初期化処理
         document.addEventListener("DOMContentLoaded", () => {
-            loadState();
-            createBingoCard();
-            createCandidateList();
+            // 禁止ポケモン情報を読み込む
+            const savedExcluded = localStorage.getItem(LS_KEYS.EXCLUDED_IMAGES);
+            excludedImages = savedExcluded ? JSON.parse(savedExcluded) : [];
 
-            handleNameInput.addEventListener('input', (e) => {
-                localStorage.setItem(LS_KEYS.HANDLE_NAME, e.target.value);
+            generateNewBingo(); // まず新しいビンゴを生成して表示
+            createCandidateList();
+            renderSavedList(); // 保存済みリストを表示
+
+            // 「新規ビンゴを生成」ボタンのイベント
+            document.getElementById('shuffle-btn').addEventListener('click', () => {
+                if (!confirm('現在のビンゴを破棄して新しいビンゴを生成しますか？\n（保存していない場合、内容は失われます）')) {
+                    return;
+                }
+                generateNewBingo();
             });
 
-            document.getElementById('shuffle-btn').addEventListener('click', () => {
-                if (bingoContainer.innerHTML.trim() !== '') {
-                    if (!confirm('現在のビンゴを破棄して再生成しますか？')) {
-                        return;
-                    }
+            // 「このビンゴを保存」ボタンのイベント
+            document.getElementById('save-btn').addEventListener('click', () => {
+                const name = handleNameInput.value.trim();
+                if (!name) {
+                    alert('保存するには名前を入力してください。');
+                    return;
                 }
-                localStorage.removeItem(LS_KEYS.BINGO_IMAGES);
-                localStorage.removeItem(LS_KEYS.CLICKED_STATE);
-                bingoImages = [];
-                createBingoCard();
+
+                let savedBingos = JSON.parse(localStorage.getItem(LS_KEYS.SAVED_BINGOS)) || [];
+                
+                // 同じ名前のデータを探す
+                const existingBingoByName = savedBingos.find(b => b.name === name);
+                // もし現在読み込んでいるビンゴなら、IDで上書き
+                if (currentBingoId) {
+                    const existingIndex = savedBingos.findIndex(b => b.id === currentBingoId);
+                    if (existingIndex !== -1) {
+                         if (existingBingoByName && existingBingoByName.id !== currentBingoId) {
+                            if (!confirm(`"${name}" という名前は既に存在します。上書きしますか？`)) return;
+                            savedBingos = savedBingos.filter(b => b.name !== name);
+                         }
+                        savedBingos[existingIndex] = {
+                            id: currentBingoId,
+                            name: name,
+                            images: currentBingoImages,
+                            clickedState: currentClickedState
+                        };
+                    }
+                } else if (existingBingoByName) {
+                     // 新規作成だが、同じ名前のものが存在する場合
+                    if (!confirm(`"${name}" という名前は既に存在します。上書きしますか？`)) return;
+                    // 古いものを削除
+                    savedBingos = savedBingos.filter(b => b.name !== name);
+                    const newBingo = {
+                        id: Date.now(), // 新しいIDを採番
+                        name: name,
+                        images: currentBingoImages,
+                        clickedState: currentClickedState
+                    };
+                    savedBingos.push(newBingo);
+                    currentBingoId = newBingo.id; // 保存したのでIDをセット
+                } else {
+                     // 完全な新規保存
+                    const newBingo = {
+                        id: Date.now(),
+                        name: name,
+                        images: currentBingoImages,
+                        clickedState: currentClickedState
+                    };
+                    savedBingos.push(newBingo);
+                    currentBingoId = newBingo.id;
+                }
+
+                localStorage.setItem(LS_KEYS.SAVED_BINGOS, JSON.stringify(savedBingos));
+                alert(`「${name}」を保存しました。`);
+                renderSavedList();
             });
 
             const toggleCandidateBtn = document.getElementById('toggle-candidate-btn');
@@ -184,251 +297,261 @@
         });
     </script>
 
-    <style>
-        html {
-            touch-action: manipulation;
-        }
+<style>
+    /* 基本設定 */
+    html {
+        touch-action: manipulation;
+    }
 
-        .bingo-card {
-            display: flex;
-            justify-content: center;
-            text-align: center;
-            flex-direction: column;
-            margin: 20px auto;
-            padding: 20px;
-            background-color: #ffffff;
-            border-radius: 15px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            width: 90%;
-            max-width: 600px;
-            box-sizing: border-box;
-        }
+    body {
+        margin: 0;
+        padding: 20px 10px; /* 上下の余白を調整 */
+        background-color: #f4f4f9;
+        color: #333;
+        font-family: sans-serif;
+        overflow-x: hidden;
+    }
 
-        .bingo-container {
-            display: grid;
-            grid-template-columns: repeat(5, 80px);
-            gap: 10px;
-            justify-content: center;
-            align-items: center;
-            box-sizing: border-box;
-        }
+    * {
+        -webkit-tap-highlight-color: transparent;
+        box-sizing: border-box; /* すべての要素でborderを含んだサイズ計算に統一 */
+    }
 
-        body {
-            margin: 0;
-            background-color: #f4f4f9;
-            color: #333;
-            overflow-x: hidden;
-        }
+    /* ビンゴカードエリア */
+    #bingo-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center; /* 子要素を水平方向に中央揃え */
+        margin: 20px auto;
+        padding: 20px;
+        width: 90%; /* 削除: width:100% */
+        max-width: 600px; /* 追加: 最大幅を指定 */
+    }
 
-        .bingo-item {
-            width: 80px;
-            height: 80px;
-            border-radius: 2px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: #f9f9f9;
-            border: 2px solid #ddd;
-            font-size: 1rem;
-            font-weight: bold;
-            transition: all 0.1s ease;
-            cursor: pointer;
-        }
+    #handlename {
+        background-color: #f4f4f9;
+        border: none;
+        border-bottom: 2px solid #ccc;
+        width: 80%;
+        max-width: 300px;
+        height: 50px;
+        text-align: center;
+        font-size: 1.5rem;
+        font-weight: 900;
+        display: block;
+        margin: 10px auto 20px auto; /* 削除: margin-top:10px, display:block, margin-left/right:autoを統合 */
+    }
 
-            .bingo-item img {
-                width: 80%;
-                height: 80%;
-                transition: transform 0.1s ease, opacity 0.1s ease;
-            }
+    #handlename:focus {
+        outline: none;
+        border-bottom-color: #007bff;
+    }
 
-            .bingo-item.clicked {
-                background-color: #87cefa;
-                border-color: #0056b3;
-                transform: scale(1.05);
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
-            }
+    .bingo-container {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 5px; /* 追加: マス間の余白 */
+        width: 100%; /* 変更: width:60% */
+        max-width: 450px; /* 追加: ビンゴ盤の最大サイズを固定 */
+        /* 削除: justify-content, align-items, margin-topなど。親要素で制御 */
+    }
 
-                .bingo-item.clicked img {
-                    transform: scale(0.9);
-                    opacity: 0.7;
-                }
+    .bingo-item {
+        width: 100%;
+        padding-bottom: 100%;
+        position: relative;
+        border-radius: 2px;
+        background-color: #f9f9f9;
+        border: 2px solid #ddd; /* 追加: 枠線を明確化 */
+        transition: all 0.1s ease;
+        cursor: pointer;
+    }
 
-        .candidate-container {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            margin-top: 20px;
-        }
+    .bingo-item img {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 80%;
+        height: 80%;
+        transition: transform 0.1s ease, opacity 0.1s ease;
+    }
 
-        .group-container {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+    .bingo-item.clicked {
+        background-color: #87cefa;
+        border-color: #0056b3;
+    }
 
-            .group-container h3 {
-                font-size: 1.2rem;
-                padding: 8px 12px;
-                background-color: #f8f8f8;
-                color: #333;
-                border-radius: 5px;
-                text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            }
+    .bingo-item.clicked img {
+        opacity: 0.7;
+    }
 
-            .group-container.アタック h3 {
-                background-color: #ffcccc;
-            }
+    /* ボタンエリア */
+    .buttons {
+        display: flex;
+        flex-direction: column;
+        align-items: center; /* ボタン自体を中央に */
+        gap: 10px;
+        margin-top: 20px;
+    }
 
-            .group-container.サポート h3 {
-                background-color: #ffe5cc;
-            }
+    button {
+        display: block;
+        margin: 0 auto;
+        font-size: 1rem;
+        padding: 10px 20px;
+        background-color: #fff;
+        color: #000;
+        border: 2px solid #dcdcdc;
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        cursor: pointer;
+        transition: all 0.1s ease;
+    }
 
-            .group-container.スピード h3 {
-                background-color: #cce5ff;
-            }
+    button:active {
+        transform: translateY(1px);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+    }
 
-            .group-container.ディフェンス h3 {
-                background-color: #e5ffcc;
-            }
+    #save-btn {
+        background-color: #cce5ff;
+        border-color: #aaccff;
+    }
 
-            .group-container.バランス h3 {
-                background-color: #e5ccff;
-            }
+    #toggle-candidate-btn {
+        font-size: 1rem;
+        border: none;
+        color: #666;
+        cursor: pointer;
+        background: none;
+        box-shadow: none;
+    }
 
-        .candidate-item-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-        }
 
-        .candidate-item {
-            position: relative;
-            width: 75px;
-            height: 75px;
-            border: 2px solid white;
-            border-radius: 1px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: #fff;
-            cursor: pointer;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
+    /* 保存済みリストエリア */
+    #saved-list-container {
+        width: 90%;
+        max-width: 600px;
+        margin: 30px auto;
+        padding: 15px;
+        background-color: #fff;
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    }
 
-            .candidate-item img {
-                width: 90%;
-                height: 90%;
-            }
+    #saved-list-container h2 {
+        text-align: center;
+        margin-top: 0;
+        font-size: 1.2rem;
+        color: #555;
+    }
 
-            .candidate-item.excluded {
-                border: 2px solid red;
-            }
+    #saved-list {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+    }
 
-        .candidate-item.excluded::before {
-     	content: '';
-     	position: absolute;
-     	top: 0;
-     	left: 0;
-     	width: 100%;
-     	height: 100%;
-     	background-color: rgba(40, 40, 40, 0.6);
-     	transition: background-color 0.3s ease;
- 	}
+    #saved-list li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 2px 10px;
+        border-bottom: 1px solid #eee;
+    }
 
-        #shuffle-btn {
-            font-size: 1.2rem;
-            padding: 12px 24px;
-            margin-top: 20px;
-            background-color: #fff;
-            color: #000;
-            border: 2px solid #dcdcdc;
-            border-radius: 12px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            cursor: pointer;
-            transition: all 0.1s ease;
-        }
+    #saved-list li:last-child {
+        border-bottom: none;
+    }
 
-            #shuffle-btn:active {
-                transform: translateY(-2px);
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-            }
+    #saved-list li span {
+        font-weight: bold;
+        flex-grow: 1;
+        text-align: center;
+        margin-left:6.25%;
+    }
 
-        #toggle-candidate-btn {
-            font-size: 1.5rem;
-            border: none;
-            color: #666;
-            cursor: pointer;
-            margin: 10px 0;
-        }
+    #saved-list li div button {
+        margin-left: 8px;
+        padding: 5px 10px;
+        font-size: 0.9rem;
+        cursor: pointer;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        background-color: #f9f9f9;
+    }
 
-        #candidate-container {
-            max-height: 0;
-            overflow: hidden;
-            opacity: 0;
-            transform: translateY(-20px);
-            transition: max-height 0.5s ease, opacity 0.5s ease, transform 0.5s ease;
-        }
+    #saved-list li div button.delete-btn {
+        background-color: #ffdddd;
+        border-color: #ffaaaa;
+        color: #d8000c;
+    }
 
-            #candidate-container.visible {
-                max-height: 3000px;
-                opacity: 1;
-                transform: translateY(0);
-            }
 
-        .buttons {
-            display: flex;
-            justify-content: center;
-            flex-direction: column;
-        }
+    /* 禁止ポケモン選択エリア */
+    .candidate-container {
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        transition: max-height 0.5s ease, opacity 0.5s ease;
+        width: 90%;
+        max-width: 600px;
+        margin: 20px auto;
+    }
 
-        button {
-            display: block;
-            margin: 0 auto;
-        }
+    .candidate-container.visible {
+        max-height: 3000px;
+        opacity: 1;
+    }
 
-        #handlename {
-            background-color: #f4f4f9;
-            border: none;
-            width: 252px;
-            height: 80px;
-            text-align: center;
-            font-size: 200%;
-            font-weight: 900;
-            margin-top: 10px;
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-        }
+    .group-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
 
-            #handlename:hover,#handlename:focus {
-                outline: none;
-            }
+    .group-container h3 {
+        font-size: 1.2rem;
+        padding: 8px 12px;
+        border-radius: 5px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
 
-        * {
-            -webkit-tap-highlight-color: transparent;
-        }
+    .group-container.アタック h3 { background-color: #ffcccc; }
+    .group-container.サポート h3 { background-color: #ffe5cc; }
+    .group-container.スピード h3 { background-color: #cce5ff; }
+    .group-container.ディフェンス h3 { background-color: #e5ffcc; }
+    .group-container.バランス h3 { background-color: #e5ccff; }
 
-        @media screen and (orientation: landscape) and (min-width: 1100px) {
-            .bingo-container {
-                grid-template-columns: repeat(5, 80px);
-            }
+    .candidate-item-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px; /* 追加: ポケモン間の余白 */
+    }
 
-            .bingo-item {
-                width: 80px;
-                height: 80px;
-            }
+    .candidate-item {
+        width: 60px;
+        height: 60px;
+        border: 2px solid white;
+        border-radius: 1px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background-color: #fff;
+        cursor: pointer;
+    }
 
-            .candidate-item {
-                width: 40px;
-                height: 40px;
-            }
+    .candidate-item img {
+        width: 90%;
+        height: 90%;
+    }
 
-            * img:hover {
-                transform: translateY(-8px);
-            }
-        }
-    </style>
+    .candidate-item.excluded {
+        border: 2px solid #f66;
+        background-color: #777;
+    }
+
+</style>
 </body>
-
 </html>
